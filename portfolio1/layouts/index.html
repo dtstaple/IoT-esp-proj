@@ -1,0 +1,55 @@
+{{ define "main" }}
+{{ $p := .Params }}
+
+<!-- NAME + BIO -->
+<section class="pane bio" id="about">
+  <div class="bio-head">
+    <h1>{{ $p.name | default .Site.Title }}</h1>
+    {{ with $p.links }}
+    <ul class="link-row">
+      {{ range . }}<li><a href="{{ .url }}">{{ .label }}</a></li>{{ end }}
+    </ul>
+    {{ end }}
+  </div>
+  {{ with $p.bio }}<p class="caption">{{ . }}</p>{{ end }}
+</section>
+
+<!-- PROJECTS -->
+{{ with $p.projects }}
+<p class="section-label" id="work">Projects</p>
+<div class="item-list">
+  {{ range . }}
+  <article class="pane item-card">
+    <h2><a href="{{ .url | default "#" }}">{{ .title }}</a></h2>
+    {{ with .meta }}<p class="item-meta">{{ . }}</p>{{ end }}
+    {{ with .description }}<p>{{ . }}</p>{{ end }}
+    {{ with .tags }}<ul class="tag-row">{{ range . }}<li>{{ . }}</li>{{ end }}</ul>{{ end }}
+  </article>
+  {{ end }}
+</div>
+{{ end }}
+
+<!-- OTHER WORK -->
+{{ with $p.other }}
+<section class="pane other" id="other">
+  <h2>{{ .heading | default "Other" }}</h2>
+  {{ with .description }}<p class="other-desc">{{ . }}</p>{{ end }}
+  <ul class="other-grid">
+    {{ range .items }}
+    {{ $title := .title }}title Josanehyjetitle josnaney he the eujosejs the ste ehnetne ejtehe hee the ee 
+    <li class="other-item">
+      {{ with .images }}
+      <div class="other-imgs">
+        {{ range . }}<img src="{{ . | relURL }}" alt="{{ $title }}">{{ end }}
+      </div>
+      {{ end }}
+      {{ with .title }}<span class="other-title">{{ . }}</span>{{ end }}
+      {{ with .blurb }}<p class="other-blurb">{{ . }}</p>{{ end }}
+      {{ with .tags }}<ul class="tag-row">{{ range . }}<li>{{ . }}</li>{{ end }}</ul>{{ end }}
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}
+
+{{ end }}

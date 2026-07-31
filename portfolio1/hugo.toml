@@ -1,0 +1,21 @@
+# ─────────────────────────────────────────────────────────────
+#  EDIT THESE FIRST
+# ─────────────────────────────────────────────────────────────
+# baseURL: pick the line that matches what you do with the repo.
+
+baseURL = "https://dstaple.github.io/"                     # Option B: account renamed to dstaple
+
+languageCode = "en-us"
+title = "Davis Stapleton"
+
+# Single-page site — skip feeds/sitemaps/taxonomies we don't use.
+disableKinds = ["taxonomy", "term", "RSS", "sitemap"]
+
+[params]
+  # The little logo in the top-left. Your initials work great.
+  monogram = "DS"
+  # Footer line.
+  author = "Davis Stapleton"
+
+[markup.goldmark.renderer]
+  unsafe = true   # lets you use raw HTML in content if you ever want to

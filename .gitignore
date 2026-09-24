@@ -5,3 +5,6 @@ certs/
 *.pcap
 data/
 models/
+.pio
+.pio/
+.vscode/

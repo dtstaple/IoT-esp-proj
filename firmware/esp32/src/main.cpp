@@ -88,56 +88,109 @@ i8YkitP7I3fx1gQg2lVVdWQ=
 
 WiFiClientSecure net;
 PubSubClient mqtt(net);
+
 unsigned long lastPublish = 0;
 const unsigned long PUBLISH_MS = 10000;
 
+static void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  switch (event) {
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      Serial.println("\n[wifi] associated");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.printf("[wifi] GOT_IP %s\n",
+        IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str());
+      break;
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      Serial.printf("\n[wifi] DISCONNECTED reason=%u\n",
+        info.wifi_sta_disconnected.reason);
+      break;
+    default:
+      break;
+  }
+}
+
 void connectWiFi() {
   Serial.printf("WiFi: joining %s\n", WIFI_SSID);
+  WiFi.persistent(false);
+  WiFi.disconnect(true, true);
+  delay(200);
+  WiFi.onEvent(onWiFiEvent);
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
-  Serial.printf("\nWiFi: ip=%s mac=%s\n",
-                WiFi.localIP().toString().c_str(),
-                WiFi.macAddress().c_str());
+  WiFi.setSleep(false);
+
+  const uint32_t t0 = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - t0 > 20000) {
+      Serial.println("\n[wifi] timeout after 20s, restarting");
+      delay(100);
+      ESP.restart();
+    }
+    delay(250);
+    Serial.print('.');
+  }
+  Serial.printf("WiFi: ip=%s mac=%s rssi=%d\n",
+    WiFi.localIP().toString().c_str(),
+    WiFi.macAddress().c_str(),
+    WiFi.RSSI());
 }
 
 void syncTime() {
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   Serial.print("NTP: syncing");
-  time_t now = time(nullptr);
-  int tries = 0;
-  while (now < 1700000000 && tries < 40) {
-    delay(500); Serial.print("."); now = time(nullptr); tries++;
+  const uint32_t t0 = millis();
+  while (time(nullptr) < 1700000000) {
+    if (millis() - t0 > 15000) {
+      Serial.println("\n[ntp] timeout after 15s, restarting");
+      delay(100);
+      ESP.restart();
+    }
+    delay(250);
+    Serial.print('+');
   }
-  Serial.printf("\nNTP: epoch=%ld\n", (long)now);
+  Serial.printf("\nNTP: epoch=%ld\n", (long)time(nullptr));
 }
 
 void connectMQTT() {
+  int attempts = 0;
   while (!mqtt.connected()) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("[mqtt] wifi dropped, restarting");
+      delay(100);
+      ESP.restart();
+    }
     Serial.print("MQTT/TLS: connecting... ");
     if (mqtt.connect(DEVICE_ID)) {
       Serial.println("ok");
       mqtt.publish("ztgw/esp32-01/status", "online", true);
-    } else {
-      char err[128];
-      net.lastError(err, sizeof(err));
-      Serial.printf("failed rc=%d tls=%s\n", mqtt.state(), err);
-      delay(5000);
+      return;
     }
+    char err[128];
+    net.lastError(err, sizeof(err));
+    Serial.printf("failed rc=%d tls=%s\n", mqtt.state(), err);
+    if (++attempts >= 5) {
+      Serial.println("[mqtt] 5 failures, restarting");
+      delay(100);
+      ESP.restart();
+    }
+    delay(5000);
   }
 }
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("free heap: %d\n", ESP.getFreeHeap());
   delay(1000);
-  Serial.println("\n=== ztgw esp32-01 (mTLS) ===");
+  Serial.printf("\nfree heap: %d\n", ESP.getFreeHeap());
+  Serial.println("=== ztgw esp32-01 (mTLS) ===");
   connectWiFi();
   syncTime();
   net.setCACert(CA_CERT);
   net.setCertificate(CLIENT_CERT);
   net.setPrivateKey(CLIENT_KEY);
+  net.setHandshakeTimeout(30);
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
+  mqtt.setKeepAlive(30);
   connectMQTT();
 }
 
@@ -150,10 +203,10 @@ void loop() {
   if (now - lastPublish >= PUBLISH_MS) {
     lastPublish = now;
     float fakeTemp = 20.0 + (millis() % 5000) / 1000.0;
-    char payload[96];
+    char payload[128];
     snprintf(payload, sizeof(payload),
-             "{\"device\":\"%s\",\"temp_c\":%.2f,\"uptime_s\":%lu}",
-             DEVICE_ID, fakeTemp, millis() / 1000);
+      "{\"device\":\"%s\",\"temp_c\":%.2f,\"uptime_s\":%lu,\"rssi\":%d}",
+      DEVICE_ID, fakeTemp, millis() / 1000, WiFi.RSSI());
     mqtt.publish("ztgw/esp32-01/telemetry", payload);
     Serial.printf("pub: %s\n", payload);
   }

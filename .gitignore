@@ -8,3 +8,6 @@ models/
 .pio
 .pio/
 .vscode/
+.venv-ml/
+*.csv
+features_contaminated_ignore.csv

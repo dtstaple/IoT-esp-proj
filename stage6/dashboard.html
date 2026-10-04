@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZT Gateway Console</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f6f4; --surface: #fcfcfb; --line: #e3e3df; --line-strong: #cfcfc9;
+    --ink: #1b1b19; --ink-2: #55554f; --ink-3: #8a8a83;
+    --good: #0ca30c; --warn: #fab219; --crit: #d03b3b; --series: #2f6fd6;
+    --good-bg: #0ca30c14; --warn-bg: #fab21922; --crit-bg: #d03b3b14;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121211; --surface: #1a1a19; --line: #2c2c2a; --line-strong: #3a3a37;
+      --ink: #ecece8; --ink-2: #a9a9a2; --ink-3: #75756f; --series: #6b9cf0;
+      --good-bg: #0ca30c22; --warn-bg: #fab21922; --crit-bg: #d03b3b26;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121211; --surface: #1a1a19; --line: #2c2c2a; --line-strong: #3a3a37;
+    --ink: #ecece8; --ink-2: #a9a9a2; --ink-3: #75756f; --series: #6b9cf0;
+    --good-bg: #0ca30c22; --warn-bg: #fab21922; --crit-bg: #d03b3b26;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
+  header {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+    padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand h1 { font-size: 16px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  .sub { color: var(--ink-2); font-family: var(--mono); font-size: 12px; }
+  .hdr-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .clock { font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+  .live.ok .dot { background: var(--good); }
+  .live.bad .dot { background: var(--crit); }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    border: 1px solid currentColor; color: var(--ink-2); white-space: nowrap;
+  }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .badge.good { color: var(--good); background: var(--good-bg); }
+  .badge.warn { color: var(--ink); background: var(--warn-bg); border-color: var(--warn); }
+  .badge.warn::before { background: var(--warn); }
+  .badge.crit { color: var(--crit); background: var(--crit-bg); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  .stat { padding: 14px 16px; }
+  .stat .label { color: var(--ink-2); font-size: 12px; }
+  .stat .value { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .stat .value small { font-size: 13px; font-weight: 500; color: var(--ink-2); margin-left: 3px; }
+  .stat .hint { color: var(--ink-3); font-size: 12px; font-family: var(--mono); }
+
+  .grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 12px; align-items: start; }
+  .panel-hd {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    padding: 12px 16px; border-bottom: 1px solid var(--line);
+  }
+  .panel-hd h2 { margin: 0; font-size: 13px; font-weight: 600; }
+  .panel-hd .sub { font-size: 11px; }
+  .devices { display: flex; flex-direction: column; gap: 12px; }
+  .dev { padding: 14px 16px; }
+  .dev-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .dev-name { font-weight: 600; }
+  .dev-mac { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .pills { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+  .pill-row { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: baseline; }
+  .pill-row .k { color: var(--ink-3); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .pill-row .v { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill {
+    font-family: var(--mono); font-size: 12px; padding: 1px 7px; border: 1px solid var(--line-strong);
+    border-radius: 4px; color: var(--ink); white-space: nowrap; max-width: 100%; overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pill.muted { color: var(--ink-2); }
+  .trust-hd { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); }
+  .trust-hd b { color: var(--ink); font-variant-numeric: tabular-nums; font-size: 14px; }
+  .bar { position: relative; height: 8px; border-radius: 4px; background: var(--line); margin-top: 6px; overflow: hidden; }
+  .bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 4px; transition: width .4s ease, background .4s; }
+  .bar .tick { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--surface); }
+  .scale { position: relative; height: 14px; font-size: 10px; color: var(--ink-3); font-family: var(--mono); }
+  .scale span { position: absolute; transform: translateX(-50%); top: 2px; }
+  .empty { padding: 24px 16px; color: var(--ink-3); text-align: center; }
+
+  .right { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .chart-box { position: relative; height: 280px; padding: 12px 12px 8px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--series); vertical-align: middle; margin-right: 5px; }
+  .legend i.thr { border-top: 2px dashed var(--crit); }
+
+  .log { max-height: 360px; overflow-y: auto; }
+  .ev {
+    display: grid; grid-template-columns: 70px 92px minmax(0, 1fr); gap: 10px; align-items: baseline;
+    padding: 7px 16px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent;
+    font-size: 12.5px;
+  }
+  .ev:last-child { border-bottom: 0; }
+  .ev .t { font-family: var(--mono); color: var(--ink-3); font-size: 12px; }
+  .ev .kind { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+  .ev .msg { overflow-wrap: anywhere; }
+  .ev.crit { border-left-color: var(--crit); background: var(--crit-bg); }
+  .ev.crit .kind { color: var(--crit); }
+  .ev.warn { border-left-color: var(--warn); }
+  .ev.good { border-left-color: var(--good); }
+  .ev.good .kind { color: var(--good); }
+  details.vec { margin-top: 4px; }
+  details.vec summary { cursor: pointer; color: var(--ink-2); font-size: 12px; }
+  details.vec pre { font-family: var(--mono); font-size: 11px; margin: 6px 0 0; white-space: pre-wrap; color: var(--ink-2); }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 480px) {
+    .ev { grid-template-columns: 62px minmax(0, 1fr); }
+    .ev .kind { grid-column: 2; }
+    .ev .msg { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div>
+        <h1 id="gw-name">ZT Gateway</h1>
+        <div class="sub" id="gw-addr">—</div>
+      </div>
+      <span class="badge" id="mode">—</span>
+    </div>
+    <div class="hdr-right">
+      <span class="live" id="live"><span class="dot"></span><span id="live-txt">connecting…</span></span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+  </header>
+
+  <section class="stats">
+    <div class="panel stat"><div class="label">Devices</div><div class="value" id="s-dev">–</div><div class="hint" id="s-dev-h">&nbsp;</div></div>
+    <div class="panel stat"><div class="label">Windows scored</div><div class="value" id="s-win">–</div><div class="hint" id="s-win-h">&nbsp;</div></div>
+    <div class="panel stat"><div class="label">Quarantines</div><div class="value" id="s-q">–</div><div class="hint" id="s-q-h">&nbsp;</div></div>
+    <div class="panel stat"><div class="label">Model latency</div><div class="value" id="s-lat">–</div><div class="hint">ONNX autoencoder, avg</div></div>
+  </section>
+
+  <section class="grid">
+    <div class="devices" id="devices"><div class="panel empty">No devices scored yet</div></div>
+    <div class="right">
+      <div class="panel">
+        <div class="panel-hd">
+          <h2>Anomaly score</h2>
+          <div class="legend"><span><i></i>reconstruction error</span><span><i class="thr"></i>threshold <span id="thr-v"></span></span></div>
+        </div>
+        <div class="chart-box"><canvas id="chart" aria-label="Anomaly score over time"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hd"><h2>Event log</h2><span class="sub" id="ev-n"></span></div>
+        <div class="log" id="log"><div class="empty">No events</div></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const POLL_MS = 2000;
+const STATE_CLS = { trusted: "good", restricted: "warn", isolated: "crit" };
+const EVENT_SEV = {
+  quarantine: "crit", would_quarantine: "crit", state_isolated: "crit",
+  anomaly: "warn", state_restricted: "warn", state_trusted: "good",
+};
+const EVENT_LABEL = {
+  quarantine: "quarantine", would_quarantine: "would quar.", state_isolated: "isolated",
+  state_restricted: "restricted", state_trusted: "trusted", anomaly: "anomaly",
+  trigger_vector: "trigger", start: "start", stop: "stop",
+};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const hms = ts => new Date(ts * 1000).toLocaleTimeString([], { hour12: false });
+const ago = ts => { const s = Math.max(0, Date.now() / 1000 - ts); return s < 60 ? `${s.toFixed(0)}s ago` : `${(s / 60).toFixed(0)}m ago`; };
+
+setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString([], { hour12: false }); }, 250);
+
+// ---------- chart ----------
+let chart, threshold = null;
+function makeChart() {
+  const ink2 = css("--ink-2"), grid = css("--line");
+  chart = new Chart($("chart"), {
+    type: "line",
+    data: { datasets: [
+      { label: "score", data: [], borderColor: css("--series"), borderWidth: 2, tension: 0.25,
+        pointRadius: ctx => (ctx.raw && threshold != null && ctx.raw.y > threshold ? 4 : 0),
+        pointHoverRadius: 5,
+        pointBackgroundColor: ctx => (ctx.raw && threshold != null && ctx.raw.y > threshold ? css("--crit") : css("--series")),
+        pointBorderColor: css("--surface"), pointBorderWidth: 2 },
+      { label: "threshold", data: [], borderColor: css("--crit"), borderWidth: 1.5, borderDash: [6, 4],
+        pointRadius: 0, pointHoverRadius: 0 },
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      interaction: { mode: "nearest", axis: "x", intersect: false },
+      scales: {
+        x: { type: "linear", grid: { display: false }, border: { color: grid },
+             ticks: { color: ink2, maxTicksLimit: 6, callback: v => hms(v) } },
+        y: { type: "logarithmic", min: 0.01, grid: { color: grid }, border: { display: false },
+             ticks: { color: ink2, maxTicksLimit: 6, callback: v => (Number.isInteger(Math.log10(v)) ? v : "") },
+             title: { display: true, text: "MSE (log)", color: ink2 } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          filter: item => item.datasetIndex === 0,
+          callbacks: {
+            title: items => items.length ? hms(items[0].raw.x) : "",
+            label: item => {
+              const s = item.raw.y, over = threshold != null && s > threshold;
+              return ` ${item.raw.mac}  score ${s.toFixed(3)}${over ? "  ▲ above threshold" : ""}`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+// re-read tokens when the OS theme flips
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { chart.destroy(); makeChart(); lastData && render(lastData); });
+
+// ---------- render ----------
+function stateBadge(state) {
+  return `<span class="badge ${STATE_CLS[state] || ""}">${esc(state || "unknown")}</span>`;
+}
+
+function deviceCard(d, thr) {
+  const cls = STATE_CLS[d.state] || "";
+  const ratio = thr ? d.last_score / thr : null;
+  return `<div class="panel dev">
+    <div class="dev-top">
+      <div><div class="dev-name">${esc(d.device_class)}</div><div class="dev-mac">${esc(d.mac)}</div></div>
+      ${stateBadge(d.state)}
+    </div>
+    <div class="pills">
+      <div class="pill-row"><span class="k">Identity</span><span class="v">
+        <span class="pill" title="${esc(d.cert_status)}">${esc(d.cert_status || "cert unknown")}</span></span></div>
+      <div class="pill-row"><span class="k">Network</span><span class="v">
+        <span class="pill">${esc(d.ip || "no lease")}</span>
+        <span class="pill muted">seen ${d.last_seen ? ago(d.last_seen) : "never"}</span>
+        ${d.quarantined ? `<span class="pill" style="color:var(--crit);border-color:var(--crit)">removed from enrolled</span>` : ""}</span></div>
+      <div class="pill-row"><span class="k">Behavior</span><span class="v">
+        <span class="pill">score ${d.last_score != null ? d.last_score.toFixed(3) : "–"}</span>
+        ${ratio != null ? `<span class="pill muted">${ratio.toFixed(2)}× threshold</span>` : ""}</span></div>
+    </div>
+    <div class="trust-hd"><span>Trust</span><b>${Math.round(d.trust)}</b></div>
+    <div class="bar" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${d.trust}" aria-label="trust score">
+      <div class="fill" style="width:${Math.max(0, Math.min(100, d.trust))}%;background:var(--${cls || "ink-3"})"></div>
+      <div class="tick" style="left:calc(50% - 1px)"></div><div class="tick" style="left:calc(80% - 1px)"></div>
+    </div>
+    <div class="scale"><span style="left:25%">isolated</span><span style="left:65%">restricted</span><span style="left:90%">trusted</span></div>
+  </div>`;
+}
+
+function eventRow(e) {
+  const sev = EVENT_SEV[e.kind] || "";
+  let msg = esc(e.message);
+  if (e.kind === "trigger_vector") {
+    let pretty = e.message;
+    try { pretty = JSON.stringify(JSON.parse(e.message), null, 1).replace(/[{}"]/g, "").trim(); } catch (_) {}
+    msg = `<details class="vec"><summary>feature vector that triggered isolation</summary><pre>${esc(pretty)}</pre></details>`;
+  }
+  return `<div class="ev ${sev}">
+    <span class="t">${hms(e.ts)}</span>
+    <span class="kind">${esc(EVENT_LABEL[e.kind] || e.kind)}</span>
+    <span class="msg">${e.mac ? `<span class="dev-mac">${esc(e.mac)}</span> ` : ""}${msg}</span>
+  </div>`;
+}
+
+let lastData = null, lastEventsKey = "";
+function render(data) {
+  lastData = data;
+  const { totals: t, gateway: g } = data;
+  threshold = t.threshold;
+
+  $("gw-name").textContent = g.hostname || "ZT Gateway";
+  $("gw-addr").textContent = `${g.gateway_ip || "?"} · ${g.iface || "?"} · ${g.window_s || 10}s windows`;
+  document.title = `${g.hostname || "ZT Gateway"} · console`;
+  const enforce = g.mode === "enforce";
+  $("mode").className = `badge ${enforce ? "crit" : "warn"}`;
+  $("mode").textContent = enforce ? "enforcing" : "detect-only";
+
+  const stale = g.updated_at && Date.now() / 1000 - g.updated_at > 3 * (g.window_s || 10);
+  $("live").className = `live ${stale ? "bad" : "ok"}`;
+  $("live-txt").textContent = stale ? `stale · last window ${ago(g.updated_at)}` : g.updated_at ? "live" : "waiting for first window";
+
+  const counts = { trusted: 0, restricted: 0, isolated: 0 };
+  data.devices.forEach(d => { counts[d.state] = (counts[d.state] || 0) + 1; });
+  $("s-dev").textContent = t.devices;
+  $("s-dev-h").textContent = `${counts.trusted} trusted · ${counts.restricted} restr. · ${counts.isolated} isol.`;
+  $("s-win").textContent = (t.windows_scored ?? 0).toLocaleString();
+  $("s-win-h").textContent = g.started_at ? `since ${hms(g.started_at)}` : "";
+  $("s-q").textContent = t.quarantines ?? 0;
+  $("s-q").style.color = t.quarantines ? "var(--crit)" : "";
+  $("s-q-h").textContent = enforce ? "nft + conntrack" : "simulated (detect-only)";
+  $("s-lat").innerHTML = t.avg_latency_us != null ? `${Math.round(t.avg_latency_us)}<small>µs</small>` : "–";
+  $("thr-v").textContent = threshold != null ? threshold.toFixed(2) : "";
+
+  $("devices").innerHTML = data.devices.length
+    ? data.devices.map(d => deviceCard(d, threshold)).join("")
+    : `<div class="panel empty">No devices scored yet — first window lands after ${g.window_s || 10}s</div>`;
+
+  const pts = data.scores.map(s => ({ x: s.ts, y: Math.max(s.score, 0.01), mac: s.mac }));
+  chart.data.datasets[0].data = pts;
+  chart.data.datasets[1].data = pts.length && threshold != null
+    ? [{ x: pts[0].x, y: threshold }, { x: pts[pts.length - 1].x, y: threshold }] : [];
+  chart.update();
+
+  const key = data.events.length ? `${data.events[0].ts}-${data.events.length}` : "";
+  if (key !== lastEventsKey) {   // don't clobber an open <details> when nothing changed
+    lastEventsKey = key;
+    $("log").innerHTML = data.events.length ? data.events.map(eventRow).join("") : `<div class="empty">No events</div>`;
+  }
+  $("ev-n").textContent = `${data.events.length} shown`;
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || r.statusText);
+    render(data);
+  } catch (err) {
+    $("live").className = "live bad";
+    $("live-txt").textContent = `offline · ${err.message}`;
+  } finally {
+    setTimeout(poll, POLL_MS);
+  }
+}
+
+makeChart();
+poll();
+</script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="{{ .Site.LanguageCode | default "en" }}" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} — {{ .Site.Title }}{{ end }}</title>
+  {{ with .Site.Params.description }}<meta name="description" content="{{ . }}">{{ end }}
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="{{ "css/main.css" | relURL }}">
+
+  <!-- set theme before first paint: saved choice, else system preference -->
+  <script>
+    (function () {
+      var saved = localStorage.getItem("theme");
+      var t = saved ? saved
+        : (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+</head>
+<body>
+  <div class="site-shell">
+    {{ partial "header.html" . }}
+    <main id="top">
+      {{ block "main" . }}{{ end }}
+    </main>
+    {{ partial "footer.html" . }}
+  </div>
+
+  <script>
+    (function () {
+      var btn = document.querySelector('[data-theme-toggle]');
+      if (!btn) return;
+      var label = btn.querySelector('[data-theme-toggle-label]');
+      setLabel(document.documentElement.dataset.theme);
+      btn.addEventListener('click', function () {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem('theme', next);
+        setLabel(next);
+      });
+      function setLabel(theme) {
+        if (label) label.textContent = theme === 'dark' ? '\u263E' : '\u2600';
+      }
+    })();
+  </script>
+</body>
+</html>

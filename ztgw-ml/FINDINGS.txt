@@ -1,0 +1,142 @@
+================================================================================
+ZERO-TRUST IoT SECURITY GATEWAY + AGENTIC RESPONSE — FINDINGS LOG
+================================================================================
+Last updated: detector evaluation complete, agent experiments next.
+
+--------------------------------------------------------------------------------
+SYSTEM OVERVIEW
+--------------------------------------------------------------------------------
+Hardware testbed: Raspberry Pi gateway (zero-trust: default-deny nftables,
+mutual-TLS device identity) monitoring two devices with two distinct threat
+models:
+  - ESP32  (WiFi sensor)        -> NETWORK attacks   (scans, floods, brute force)
+  - STM32  (serial-bridged)     -> BEHAVIORAL attacks (value drift, C2 beacon)
+
+Data collected on live hardware: ~27 hours, two sessions.
+  - baseline (clean normal): both devices
+  - attack session: 12 labeled attacks, 2,734 windows
+
+Two detection layers (one per threat model, both one-class / normal-only):
+  - NETWORK detector     : packet features on wlan0  (ESP32 only; STM32 invisible)
+  - BEHAVIORAL detector  : MQTT publish features     (both devices)
+
+Agent layer (LangGraph pipeline, built + proven on real data):
+  investigator (deterministic) -> classifier (LLM, requests evidence) ->
+  [responder -> gate]  with human-review escalation. Enforcement is deterministic;
+  the LLM can only recommend, never act.
+
+--------------------------------------------------------------------------------
+DETECTION RESULTS (rigorous: chronological split, threshold tuned on validation,
+FP on held-out test, per-attack detection with 95% confidence intervals)
+--------------------------------------------------------------------------------
+
+NOTE: An earlier evaluation claimed "100% detection @ ~1% FP" but rested on only
+9 attack windows with a circular (tune-and-test on same data) threshold. Rigorous
+re-evaluation on the full 12-attack / 2,734-window dataset gives the honest
+numbers below. This is consistent with the literature on optimism in small-sample
+security ML (IEEE taxonomy review).
+
+=== NETWORK DETECTOR (ESP32 attacks, 178 attack windows) ===
+
+Isolation Forest:
+  overall detection   84.3%  [78.1, 89.3]
+  FP (held-out normal) 1.32%  (4.8/hr)
+  FP (attack session) 49.71%  <- unusable, flags half of normal traffic
+  precision 0.109   recall 0.843   PR-AUC 0.162
+  per attack:  host_sweep 100% | syn_flood 100% | udp_flood 100% |
+               icmp_flood 76.9% | mqtt_brute 50%
+
+Autoencoder:
+  overall detection   14.0%  [9.3, 20.0]   <- misses most network attacks
+  FP (held-out normal) 0.35%  (1.2/hr)      <- very precise when it fires
+  FP (attack session)  0.66%
+  precision 0.532   recall 0.140   PR-AUC 0.233
+  latency 54 us/window  (vs IsolationForest 11,700 us)
+
+Tradeoff: IsolationForest catches attacks but over-flags badly (49% session FP);
+Autoencoder is precise + 200x faster but misses most attacks. Neither is
+deployable alone -> motivates a reasoning layer that filters/augments detector
+output.
+
+=== BEHAVIORAL DETECTOR (STM32 attacks, 51 attack windows) ===
+
+Isolation Forest:
+  overall detection   37.3%  [25.3, 51.0]
+  FP (held-out normal) 0.54%
+  FP (attack session)  3.49%
+  per attack:  stm32_beacon 100%  [83.2, 100.0]
+               stm32_value_drift  0.0%  [0.0, 10.7]   <-- KEY FINDING
+
+--------------------------------------------------------------------------------
+KEY FINDING: STATISTICAL DETECTORS ARE BLIND TO DATA-INTEGRITY ATTACKS
+--------------------------------------------------------------------------------
+value_drift (sensor spoofing) was detected 0/32 by the behavioral detector.
+
+WHY: the Isolation Forest scores all 11 behavioral features jointly. value_drift
+moves only val_mean / val_std while rate, timing, size and counts stay normal.
+The 9 unchanged features dominate the anomaly score, so the attack is invisible.
+A statistical outlier detector built on traffic SHAPE cannot see an attack with
+normal traffic shape but corrupted payload values.
+
+CONTRAST: the LLM classifier agent caught this same value_drift window at 0.97
+confidence, reasoning explicitly: "val_mean = 950 vs baseline 49, but rate and
+timing are normal -> data-integrity attack, not a network event," and grounding
+the verdict in the specific cited evidence.
+
+=> This is the central justification for the agent layer. The detectors are good
+   at volumetric/timing anomalies (floods, scans, beacon) but blind to
+   data-integrity attacks by construction. The reasoning agent catches what the
+   detectors cannot, because it reasons over specific evidence rather than an
+   aggregate score against one threshold.
+
+--------------------------------------------------------------------------------
+COMPLETE THREAT COVERAGE (both detectors evaluated)
+--------------------------------------------------------------------------------
+  Threat model        Detector            Catches            Misses
+  ------------------  ------------------  -----------------  -------------------
+  Network (ESP32)     network IF          floods, scans      subtle/low-volume
+  Behavioral (STM32)  behavioral IF       beacon (timing)    value_drift (0%)
+
+  The union of both detectors still MISSES value_drift entirely -> the exact gap
+  the agent layer fills.
+
+--------------------------------------------------------------------------------
+METHODOLOGY NOTES (course-aligned, for the paper)
+--------------------------------------------------------------------------------
+  - One-class training (normal only): valid class-imbalance strategy; the
+    autoencoder/IF see no attacks during training.
+  - Split before scaling: scaler fit on TRAIN split only (no leakage). Verified.
+  - Chronological split (no shuffle): time-series integrity preserved; avoids
+    optimistic FP from shuffled splits.
+  - Threshold tuned on a separate VALIDATION slice; FP reported on held-out TEST
+    normal (de-circularized).
+  - Privacy: no IP/MAC used as model features (only counts e.g. uniq_dst_ip).
+    Identifiers used only for keying/enforcement, never as inputs.
+  - Label-leakage: the agent classifier never sees ground-truth labels; they are
+    joined only after the run for scoring.
+
+--------------------------------------------------------------------------------
+STATUS
+--------------------------------------------------------------------------------
+DONE:
+  - Hardware testbed, zero-trust gateway, two-device data collection
+  - Two detectors evaluated rigorously with CIs (network + behavioral)
+  - Agent reasoning pipeline (investigator, classifier, evidence-loop, graph)
+    built and proven on real data with a live LLM
+  - Key contrast established: detectors blind to value_drift; agent catches it
+
+NEXT:
+  - responder.py (LLM action mapping) + gate.py (deterministic enforcement)
+  - replay.py  -> Part A experiments (agent correctness/consistency/groundedness
+                  vs the detector baselines above)
+  - adversarial.py -> Part B experiments (prompt injection, hallucination)
+  - live demo (Part D): agent graph -> real nftables quarantine
+
+PAPER NARRATIVE ARC:
+  1. ML detection layer: honest results, good at volumetric anomalies, blind to
+     data-integrity attacks (measured, with CIs).
+  2. The gap: value_drift has normal traffic shape -> 0% detector detection.
+  3. The agent layer: reasons over evidence, catches value_drift at 0.97. This is
+     WHY agents, not just a better threshold -- and the research question is
+     whether they do it SAFELY (deterministic gate, injection resistance).
+================================================================================

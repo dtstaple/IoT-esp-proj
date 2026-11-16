@@ -1,0 +1,15 @@
+certs/
+*.key
+*.pem
+*.csv
+*.pcap
+data/
+models/
+.pio
+.pio/
+.vscode/
+.venv-ml/
+*.csv
+features_contaminated_ignore.csv
+stage6/state.db*
+__pycache__/
